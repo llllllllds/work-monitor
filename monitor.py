@@ -4,7 +4,6 @@ import requests
 from telethon import TelegramClient
 from flask import Flask
 from threading import Thread
-from datetime import datetime
 
 # === 🔧 Настройки ===
 API_ID = 21610900
@@ -37,19 +36,6 @@ sent_messages = {}  # key = "<tag>:<ticker>", value = {"message_id": int, "count
 
 client = TelegramClient("userbot_session", API_ID, API_HASH)
 
-# === 🎨 Красивые логи ===
-def log(message, level="INFO"):
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    colors = {
-        "INFO": "ℹ️",
-        "NEW": "📤",
-        "UPDATE": "✏️",
-        "ERROR": "❌",
-        "SUCCESS": "✅"
-    }
-    icon = colors.get(level, "•")
-    print(f"[{timestamp}] {icon} {message}")
-
 # === 📩 Отправка или обновление сообщений ===
 def send_or_update_message(tag: str, display_name: str, count: int, twitter_url=None, telegram_url=None):
     key = f"{tag}:{display_name.lower()}"
@@ -67,25 +53,21 @@ def send_or_update_message(tag: str, display_name: str, count: int, twitter_url=
                 f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
                 json={"chat_id": TARGET_CHAT_ID, "message_id": old_msg["message_id"], "text": text}
             )
+            print(f"✏️ Обновлено сообщение для {display_name} ({tag}): {resp.status_code}")
             if resp.status_code == 200:
                 sent_messages[key]["count"] = count
-                log(f"Обновлено: {display_name} ({tag.upper()}) — теперь {count} повторов (было {old_msg['count']})", "UPDATE")
-            else:
-                log(f"Ошибка обновления {display_name}: {resp.status_code}", "ERROR")
     else:
         resp = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             json={"chat_id": TARGET_CHAT_ID, "text": text}
         )
+        print(f"📤 Новое сообщение отправлено для {display_name} ({tag}): {resp.status_code}")
         if resp.status_code == 200:
             data = resp.json()
             sent_messages[key] = {
                 "message_id": data["result"]["message_id"],
                 "count": count
             }
-            log(f"Отправлено: {display_name} ({tag.upper()}) — {count} повторов", "NEW")
-        else:
-            log(f"Ошибка отправки {display_name}: {resp.status_code}", "ERROR")
 
 # === 📊 Парсеры ===
 def parse_plasma_message(msg):
@@ -149,7 +131,8 @@ async def monitor_channel(tag, url):
             if token_norm not in details:
                 details[token_norm] = (token, twitter, telegram)
 
-    # Отправляем только токены с повторами >= 2
+    print(f"📊 [{tag}] Найденные токены:", counts)
+
     for token_norm, count in counts.items():
         if count >= 2:
             token, twitter, telegram = details[token_norm]
@@ -157,15 +140,14 @@ async def monitor_channel(tag, url):
 
 async def main():
     await client.start()
-    log("Userbot запущен! Проверка каналов каждые 10 секунд...", "SUCCESS")
-    log("=" * 60, "INFO")
+    print("✅ Userbot авторизован и каждые 10 секунд проверяет каналы...")
 
     while True:
         for tag, url in CHANNELS.items():
             try:
                 await monitor_channel(tag, url)
             except Exception as e:
-                log(f"Ошибка при проверке {tag.upper()}: {e}", "ERROR")
+                print(f"[❌] Ошибка при проверке {tag}: {e}")
         await asyncio.sleep(10)
 
 if __name__ == "__main__":
